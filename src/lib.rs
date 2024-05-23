@@ -2,6 +2,8 @@
 //!
 //! ## Examples
 //!
+//! Using references
+//!
 //! ```
 //! use std::thread;
 //!
@@ -28,6 +30,40 @@
 //!     thread::spawn({
 //!         let mut f = e.extend_fn_mut(f2);
 //!         move || f.call(())
+//!     });
+//!     println!("hello from the main thread");
+//! });
+//!
+//! // After the scope, we can modify and access our variables again:
+//! a.push(4);
+//! assert_eq!(x, a.len());
+//! ```
+//!
+//! Using boxes
+//!
+//! ```
+//! use std::thread;
+//!
+//! let mut a = vec![1, 2, 3];
+//! let mut x = 0;
+//!
+//! scope_lock::lock_scope(|e| {
+//!     thread::spawn({
+//!         let f = e.extend_fn_once_box(|()| {
+//!             println!("hello from the first scoped thread");
+//!             // We can borrow `a` here.
+//!             dbg!(&a);
+//!         });
+//!         move || f(())
+//!     });
+//!     thread::spawn({
+//!         let mut f = e.extend_fn_once_box(|()| {
+//!             println!("hello from the second scoped thread");
+//!             // We can even mutably borrow `x` here,
+//!             // because no other threads are using it.
+//!             x += a[0] + a[2];
+//!         });
+//!         move || f(())
 //!     });
 //!     println!("hello from the main thread");
 //! });
@@ -90,6 +126,25 @@ impl<'scope, 'env> Extender<'scope, 'env> {
         }
     }
 
+    pub fn extend_fn_box<F, I, O>(&'scope self, f: F) -> Box<dyn Fn(I) -> O + Send + Sync>
+    where
+        F: Fn(I) -> O + Send + Sync + 'scope,
+        I: Send + 'scope,
+        O: Send + 'scope,
+    {
+        unsafe {
+            let reference_guard =
+                mem::transmute::<Reference<'_>, Reference<'static>>(self.rc.acquire());
+            mem::transmute::<
+                Box<dyn Fn(I) -> O + Send + Sync + 'scope>,
+                Box<dyn Fn(I) -> O + Send + Sync>,
+            >(Box::new(move |i| {
+                let _reference_guard = &reference_guard;
+                f(i)
+            }))
+        }
+    }
+
     pub fn extend_fn_mut<F, I, O>(&'scope self, f: &'scope mut F) -> ExtendedFnMut<I, O>
     where
         F: FnMut(I) -> O + Send + 'scope,
@@ -109,6 +164,24 @@ impl<'scope, 'env> Extender<'scope, 'env> {
         }
     }
 
+    pub fn extend_fn_mut_box<F, I, O>(&'scope self, mut f: F) -> Box<dyn FnMut(I) -> O + Send>
+    where
+        F: FnMut(I) -> O + Send + 'scope,
+        I: Send + 'scope,
+        O: Send + 'scope,
+    {
+        unsafe {
+            let reference_guard =
+                mem::transmute::<Reference<'_>, Reference<'static>>(self.rc.acquire());
+            mem::transmute::<Box<dyn FnMut(I) -> O + Send + 'scope>, Box<dyn FnMut(I) -> O + Send>>(
+                Box::new(move |i| {
+                    let _reference_guard = &reference_guard;
+                    f(i)
+                }),
+            )
+        }
+    }
+
     pub fn extend_fn_once<F, I, O>(&'scope self, f: RefOnce<'scope, F>) -> ExtendedFnOnce<I, O>
     where
         F: FnOnce(I) -> O + Send + 'scope,
@@ -125,6 +198,24 @@ impl<'scope, 'env> Extender<'scope, 'env> {
                     self.rc.acquire(),
                 ),
             }
+        }
+    }
+
+    pub fn extend_fn_once_box<F, I, O>(&'scope self, f: F) -> Box<dyn FnOnce(I) -> O + Send>
+    where
+        F: FnOnce(I) -> O + Send + 'scope,
+        I: Send + 'scope,
+        O: Send + 'scope,
+    {
+        unsafe {
+            let reference_guard =
+                mem::transmute::<Reference<'_>, Reference<'static>>(self.rc.acquire());
+            mem::transmute::<Box<dyn FnOnce(I) -> O + Send + 'scope>, Box<dyn FnOnce(I) -> O + Send>>(
+                Box::new(move |i| {
+                    let _reference_guard = &reference_guard;
+                    f(i)
+                }),
+            )
         }
     }
 }
