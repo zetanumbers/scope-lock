@@ -42,25 +42,29 @@ use std::{
     mem,
     ops::{Deref, DerefMut},
     ptr,
-    sync::{Condvar, Mutex},
 };
 
-// TODO: miri
+use parking_lot::{RwLock, RwLockReadGuard};
+
 pub fn lock_scope<'env, F, T>(scope: F)
 where
     F: for<'scope> FnOnce(&'scope Extender<'scope, 'env>) -> T,
 {
+    let rw_lock = RwLock::new(());
     let extender = Extender {
-        dropped_sema: SyncWatch::new(0),
+        rc: unsafe {
+            mem::transmute::<ReferenceCounter<'_>, ReferenceCounter<'static>>(
+                ReferenceCounter::new(&rw_lock),
+            )
+        },
         scope: PhantomData,
         env: PhantomData,
     };
-    let _guard = ZeroGuard::new(&extender.dropped_sema);
     scope(&extender);
 }
 
 pub struct Extender<'scope, 'env> {
-    dropped_sema: SyncWatch<usize>,
+    rc: ReferenceCounter<'static>,
     scope: PhantomData<&'scope mut &'scope ()>,
     env: PhantomData<&'env mut &'env ()>,
 }
@@ -73,15 +77,14 @@ impl<'scope, 'env> Extender<'scope, 'env> {
         I: Send + 'scope,
         O: Send + 'scope,
     {
-        self.dropped_sema.inc();
         unsafe {
             ExtendedFn {
                 func: mem::transmute::<
                     ptr::NonNull<dyn Fn(I) -> O + Sync + '_>,
                     ptr::NonNull<dyn Fn(I) -> O + Sync + 'static>,
                 >(ptr::NonNull::from(f)),
-                dropped_sema: mem::transmute::<&SyncWatch<usize>, &'static SyncWatch<usize>>(
-                    &self.dropped_sema,
+                _reference_guard: mem::transmute::<Reference<'_>, Reference<'static>>(
+                    self.rc.acquire(),
                 ),
             }
         }
@@ -93,15 +96,14 @@ impl<'scope, 'env> Extender<'scope, 'env> {
         I: Send + 'scope,
         O: Send + 'scope,
     {
-        self.dropped_sema.inc();
         unsafe {
             ExtendedFnMut {
                 func: mem::transmute::<
                     ptr::NonNull<dyn FnMut(I) -> O + Send + '_>,
                     ptr::NonNull<dyn FnMut(I) -> O + Send + 'static>,
                 >(ptr::NonNull::from(f)),
-                dropped_sema: mem::transmute::<&SyncWatch<usize>, &'static SyncWatch<usize>>(
-                    &self.dropped_sema,
+                _reference_guard: mem::transmute::<Reference<'_>, Reference<'static>>(
+                    self.rc.acquire(),
                 ),
             }
         }
@@ -113,15 +115,14 @@ impl<'scope, 'env> Extender<'scope, 'env> {
         I: Send + 'scope,
         O: Send + 'scope,
     {
-        self.dropped_sema.inc();
         unsafe {
             ExtendedFnOnce {
                 func: mem::transmute::<
                     ptr::NonNull<dyn ObjectSafeFnOnce<I, Output = O> + Send + '_>,
                     ptr::NonNull<dyn ObjectSafeFnOnce<I, Output = O> + Send + 'static>,
                 >(ptr::NonNull::new_unchecked(RefOnce::into_raw(f))),
-                dropped_flag: mem::transmute::<&SyncWatch<usize>, &'static SyncWatch<usize>>(
-                    &self.dropped_sema,
+                reference_guard: mem::transmute::<Reference<'_>, Reference<'static>>(
+                    self.rc.acquire(),
                 ),
             }
         }
@@ -129,70 +130,26 @@ impl<'scope, 'env> Extender<'scope, 'env> {
 }
 
 /// Waits for true on drop
-struct ZeroGuard<'a> {
-    sema: &'a SyncWatch<usize>,
+struct ReferenceCounter<'a> {
+    counter: &'a RwLock<()>,
 }
 
-impl<'a> ZeroGuard<'a> {
-    fn new(sema: &'a SyncWatch<usize>) -> Self {
-        Self { sema }
+type Reference<'a> = RwLockReadGuard<'a, ()>;
+
+impl<'a> ReferenceCounter<'a> {
+    const fn new(rw_lock: &'a RwLock<()>) -> Self {
+        Self { counter: rw_lock }
+    }
+
+    fn acquire(&self) -> Reference<'_> {
+        self.counter.read()
     }
 }
 
-impl Drop for ZeroGuard<'_> {
+impl Drop for ReferenceCounter<'_> {
     fn drop(&mut self) {
-        self.sema.wait_for(&0)
-    }
-}
-
-#[derive(Default)]
-struct SyncWatch<T> {
-    lock: Mutex<T>,
-    condvar: Condvar,
-}
-
-impl SyncWatch<usize> {
-    fn inc(&self) {
-        // TODO: Figure out poisoning
-        *self.lock.lock().unwrap_or_else(|e| e.into_inner()) += 1;
-        // TODO: Remove bc Semaphore
-        self.condvar.notify_all();
-    }
-
-    fn dec(&self) {
-        // TODO: Figure out poisoning
-        *self.lock.lock().unwrap_or_else(|e| e.into_inner()) -= 1;
-        self.condvar.notify_all();
-    }
-}
-
-impl<T> SyncWatch<T> {
-    const fn new(init_val: T) -> Self {
-        Self {
-            lock: Mutex::new(init_val),
-            condvar: Condvar::new(),
-        }
-    }
-
-    fn wait_for<U>(&self, stop_on_eq: &U)
-    where
-        T: PartialEq<U>,
-    {
-        self.wait_with(|v| *v == *stop_on_eq)
-    }
-
-    fn wait_with<F>(&self, mut stop_wait: F)
-    where
-        F: FnMut(&T) -> bool,
-    {
-        let mut lock_res = self.lock.lock();
-        loop {
-            let lock = lock_res.unwrap_or_else(|e| e.into_inner());
-            if stop_wait(&lock) {
-                break;
-            }
-            lock_res = self.condvar.wait(lock);
-        }
+        // faster to not unlock and just drop
+        mem::forget(self.counter.write());
     }
 }
 
@@ -201,18 +158,12 @@ impl<T> SyncWatch<T> {
 pub struct ExtendedFn<I, O> {
     // TODO: Could make a single dynamicly sized struct
     func: ptr::NonNull<dyn Fn(I) -> O + Sync>,
-    dropped_sema: &'static SyncWatch<usize>,
+    _reference_guard: Reference<'static>,
 }
 
 impl<I, O> ExtendedFn<I, O> {
     pub fn call(&self, input: I) -> O {
         (unsafe { self.func.as_ref() })(input)
-    }
-}
-
-impl<I, O> Drop for ExtendedFn<I, O> {
-    fn drop(&mut self) {
-        self.dropped_sema.dec();
     }
 }
 
@@ -223,18 +174,12 @@ unsafe impl<I, O> Sync for ExtendedFn<I, O> {}
 pub struct ExtendedFnMut<I, O> {
     // TODO: Could make a single dynamicly sized struct
     func: ptr::NonNull<dyn FnMut(I) -> O + Send>,
-    dropped_sema: &'static SyncWatch<usize>,
+    _reference_guard: Reference<'static>,
 }
 
 impl<I, O> ExtendedFnMut<I, O> {
     pub fn call(&mut self, input: I) -> O {
         (unsafe { self.func.as_mut() })(input)
-    }
-}
-
-impl<I, O> Drop for ExtendedFnMut<I, O> {
-    fn drop(&mut self) {
-        self.dropped_sema.dec();
     }
 }
 
@@ -325,22 +270,20 @@ impl<T: ?Sized> Drop for RefOnce<'_, T> {
 pub struct ExtendedFnOnce<I, O> {
     // TODO: Could make a single dynamicly sized struct
     func: ptr::NonNull<dyn ObjectSafeFnOnce<I, Output = O> + Send>,
-    dropped_flag: &'static SyncWatch<usize>,
+    reference_guard: Reference<'static>,
 }
 
 impl<I, O> ExtendedFnOnce<I, O> {
     pub fn call(self, input: I) -> O {
         let mut this = mem::ManuallyDrop::new(self);
-        let out = unsafe { this.func.as_mut().call_once(input) };
-        this.dropped_flag.dec();
-        out
+        let _reference_guard = unsafe { ptr::read(&this.reference_guard) };
+        unsafe { this.func.as_mut().call_once(input) }
     }
 }
 
 impl<I, O> Drop for ExtendedFnOnce<I, O> {
     fn drop(&mut self) {
         unsafe { ptr::drop_in_place(self.func.as_ptr()) };
-        self.dropped_flag.dec();
     }
 }
 
