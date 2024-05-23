@@ -1,75 +1,127 @@
+//! # Scope lock
+//!
+//! ## Examples
+//!
+//! ```
+//! use std::thread;
+//!
+//! let mut a = vec![1, 2, 3];
+//! let mut x = 0;
+//!
+//! let f1 = &|()| {
+//!     println!("hello from the first scoped thread");
+//!     // We can borrow `a` here.
+//!     dbg!(&a);
+//! };
+//! let f2 = &mut |()| {
+//!     println!("hello from the second scoped thread");
+//!     // We can even mutably borrow `x` here,
+//!     // because no other threads are using it.
+//!     x += a[0] + a[2];
+//! };
+//!
+//! scope_lock::lock_scope(|e| {
+//!     thread::spawn({
+//!         let f = e.extend_fn(f1);
+//!         move || f.call(())
+//!     });
+//!     thread::spawn({
+//!         let mut f = e.extend_fn_mut(f2);
+//!         move || f.call(())
+//!     });
+//!     println!("hello from the main thread");
+//! });
+//!
+//! // After the scope, we can modify and access our variables again:
+//! a.push(4);
+//! assert_eq!(x, a.len());
+//! ```
 use std::{
     borrow::{Borrow, BorrowMut},
+    marker::PhantomData,
     mem,
     ops::{Deref, DerefMut},
     ptr,
     sync::{Condvar, Mutex},
 };
 
-pub fn lock_scope<F>(scope: F)
+// TODO: miri
+pub fn lock_scope<'env, F, T>(scope: F)
 where
-    F: for<'a> FnOnce(Extender<'a>),
+    F: for<'scope> FnOnce(&'scope Extender<'scope, 'env>) -> T,
 {
-    let dropped = SyncWatch::new(false);
-    let _guard = IfGuard::new(&dropped);
     let extender = Extender {
-        dropped_flag: &dropped,
+        dropped_sema: SyncWatch::new(0),
+        scope: PhantomData,
+        env: PhantomData,
     };
-    scope(extender);
+    let _guard = ZeroGuard::new(&extender.dropped_sema);
+    scope(&extender);
 }
 
-#[derive(Clone, Copy)]
-pub struct Extender<'a> {
-    dropped_flag: &'a SyncWatch<bool>,
+pub struct Extender<'scope, 'env> {
+    dropped_sema: SyncWatch<usize>,
+    scope: PhantomData<&'scope mut &'scope ()>,
+    env: PhantomData<&'env mut &'env ()>,
 }
 
-impl<'a> Extender<'a> {
-    pub fn extend_fn<F, I, O>(self, f: &F) -> ExtendedFn<I, O>
+// TODO: Add extend ref (mut)
+impl<'scope, 'env> Extender<'scope, 'env> {
+    pub fn extend_fn<F, I, O>(&'scope self, f: &'scope F) -> ExtendedFn<I, O>
     where
-        F: Fn(I) -> O + Sync + 'a,
+        F: Fn(I) -> O + Sync + 'scope,
+        I: Send + 'scope,
+        O: Send + 'scope,
     {
+        self.dropped_sema.inc();
         unsafe {
             ExtendedFn {
                 func: mem::transmute::<
                     ptr::NonNull<dyn Fn(I) -> O + Sync + '_>,
                     ptr::NonNull<dyn Fn(I) -> O + Sync + 'static>,
                 >(ptr::NonNull::from(f)),
-                dropped_flag: mem::transmute::<&SyncWatch<bool>, &'static SyncWatch<bool>>(
-                    self.dropped_flag,
+                dropped_sema: mem::transmute::<&SyncWatch<usize>, &'static SyncWatch<usize>>(
+                    &self.dropped_sema,
                 ),
             }
         }
     }
 
-    pub fn extend_fn_mut<F, I, O>(self, f: &mut F) -> ExtendedFnMut<I, O>
+    pub fn extend_fn_mut<F, I, O>(&'scope self, f: &'scope mut F) -> ExtendedFnMut<I, O>
     where
-        F: FnMut(I) -> O + Send + 'a,
+        F: FnMut(I) -> O + Send + 'scope,
+        I: Send + 'scope,
+        O: Send + 'scope,
     {
+        self.dropped_sema.inc();
         unsafe {
             ExtendedFnMut {
                 func: mem::transmute::<
                     ptr::NonNull<dyn FnMut(I) -> O + Send + '_>,
                     ptr::NonNull<dyn FnMut(I) -> O + Send + 'static>,
                 >(ptr::NonNull::from(f)),
-                dropped_flag: mem::transmute::<&SyncWatch<bool>, &'static SyncWatch<bool>>(
-                    self.dropped_flag,
+                dropped_sema: mem::transmute::<&SyncWatch<usize>, &'static SyncWatch<usize>>(
+                    &self.dropped_sema,
                 ),
             }
         }
     }
 
-    pub fn extend_fn_once<F, I, O>(self, f: RefOnce<'_, F>) -> ExtendedFnOnce<I, O>
+    pub fn extend_fn_once<F, I, O>(&'scope self, f: RefOnce<'scope, F>) -> ExtendedFnOnce<I, O>
     where
-        F: FnOnce(I) -> O + Send + 'a,
+        F: FnOnce(I) -> O + Send + 'scope,
+        I: Send + 'scope,
+        O: Send + 'scope,
     {
+        self.dropped_sema.inc();
         unsafe {
             ExtendedFnOnce {
                 func: mem::transmute::<
                     ptr::NonNull<dyn ObjectSafeFnOnce<I, Output = O> + Send + '_>,
                     ptr::NonNull<dyn ObjectSafeFnOnce<I, Output = O> + Send + 'static>,
                 >(ptr::NonNull::new_unchecked(RefOnce::into_raw(f))),
-                dropped_flag: mem::transmute::<&SyncWatch<bool>, &'static SyncWatch<bool>>(
-                    self.dropped_flag,
+                dropped_flag: mem::transmute::<&SyncWatch<usize>, &'static SyncWatch<usize>>(
+                    &self.dropped_sema,
                 ),
             }
         }
@@ -77,19 +129,19 @@ impl<'a> Extender<'a> {
 }
 
 /// Waits for true on drop
-struct IfGuard<'a> {
-    flag: &'a SyncWatch<bool>,
+struct ZeroGuard<'a> {
+    sema: &'a SyncWatch<usize>,
 }
 
-impl<'a> IfGuard<'a> {
-    fn new(flag: &'a SyncWatch<bool>) -> Self {
-        Self { flag }
+impl<'a> ZeroGuard<'a> {
+    fn new(sema: &'a SyncWatch<usize>) -> Self {
+        Self { sema }
     }
 }
 
-impl Drop for IfGuard<'_> {
+impl Drop for ZeroGuard<'_> {
     fn drop(&mut self) {
-        self.flag.wait_for(&true)
+        self.sema.wait_for(&0)
     }
 }
 
@@ -99,19 +151,27 @@ struct SyncWatch<T> {
     condvar: Condvar,
 }
 
+impl SyncWatch<usize> {
+    fn inc(&self) {
+        // TODO: Figure out poisoning
+        *self.lock.lock().unwrap_or_else(|e| e.into_inner()) += 1;
+        // TODO: Remove bc Semaphore
+        self.condvar.notify_all();
+    }
+
+    fn dec(&self) {
+        // TODO: Figure out poisoning
+        *self.lock.lock().unwrap_or_else(|e| e.into_inner()) -= 1;
+        self.condvar.notify_all();
+    }
+}
+
 impl<T> SyncWatch<T> {
     const fn new(init_val: T) -> Self {
         Self {
             lock: Mutex::new(init_val),
             condvar: Condvar::new(),
         }
-    }
-
-    fn replace(&self, new_val: T) -> T {
-        let mut lock = self.lock.lock().unwrap_or_else(|e| e.into_inner());
-        let out = mem::replace(&mut *lock, new_val);
-        self.condvar.notify_all();
-        out
     }
 
     fn wait_for<U>(&self, stop_on_eq: &U)
@@ -141,7 +201,7 @@ impl<T> SyncWatch<T> {
 pub struct ExtendedFn<I, O> {
     // TODO: Could make a single dynamicly sized struct
     func: ptr::NonNull<dyn Fn(I) -> O + Sync>,
-    dropped_flag: &'static SyncWatch<bool>,
+    dropped_sema: &'static SyncWatch<usize>,
 }
 
 impl<I, O> ExtendedFn<I, O> {
@@ -152,7 +212,7 @@ impl<I, O> ExtendedFn<I, O> {
 
 impl<I, O> Drop for ExtendedFn<I, O> {
     fn drop(&mut self) {
-        self.dropped_flag.replace(true);
+        self.dropped_sema.dec();
     }
 }
 
@@ -163,7 +223,7 @@ unsafe impl<I, O> Sync for ExtendedFn<I, O> {}
 pub struct ExtendedFnMut<I, O> {
     // TODO: Could make a single dynamicly sized struct
     func: ptr::NonNull<dyn FnMut(I) -> O + Send>,
-    dropped_flag: &'static SyncWatch<bool>,
+    dropped_sema: &'static SyncWatch<usize>,
 }
 
 impl<I, O> ExtendedFnMut<I, O> {
@@ -174,7 +234,7 @@ impl<I, O> ExtendedFnMut<I, O> {
 
 impl<I, O> Drop for ExtendedFnMut<I, O> {
     fn drop(&mut self) {
-        self.dropped_flag.replace(true);
+        self.dropped_sema.dec();
     }
 }
 
@@ -265,20 +325,25 @@ impl<T: ?Sized> Drop for RefOnce<'_, T> {
 pub struct ExtendedFnOnce<I, O> {
     // TODO: Could make a single dynamicly sized struct
     func: ptr::NonNull<dyn ObjectSafeFnOnce<I, Output = O> + Send>,
-    dropped_flag: &'static SyncWatch<bool>,
+    dropped_flag: &'static SyncWatch<usize>,
 }
 
 impl<I, O> ExtendedFnOnce<I, O> {
     pub fn call(self, input: I) -> O {
         let mut this = mem::ManuallyDrop::new(self);
-        unsafe { this.func.as_mut().call_once(input) }
+        let out = unsafe { this.func.as_mut().call_once(input) };
+        this.dropped_flag.dec();
+        out
     }
 }
 
 impl<I, O> Drop for ExtendedFnOnce<I, O> {
     fn drop(&mut self) {
-        self.dropped_flag.replace(true);
+        unsafe { ptr::drop_in_place(self.func.as_ptr()) };
+        self.dropped_flag.dec();
     }
 }
 
 unsafe impl<I, O> Send for ExtendedFnOnce<I, O> {}
+
+// TODO: zero case test
