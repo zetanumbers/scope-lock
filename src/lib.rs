@@ -218,6 +218,8 @@ impl<'scope, 'env> Extender<'scope, 'env> {
             )
         }
     }
+
+    // TODO: Add futures
 }
 
 /// Waits for true on drop
