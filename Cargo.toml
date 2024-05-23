@@ -2,5 +2,8 @@
 name = "scope-lock"
 version = "0.1.0"
 edition = "2021"
-
-[dependencies]
+# TODO: elaborate
+description = "Safely extend lifetimes"
+# TODO: Apache 2.0
+license = "MIT"
+repository = "https://github.com/zetanumbers/scope-lock"
