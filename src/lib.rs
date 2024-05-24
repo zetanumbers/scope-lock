@@ -57,7 +57,7 @@
 //!         move || f(())
 //!     });
 //!     thread::spawn({
-//!         let mut f = e.extend_fn_once_box(|()| {
+//!         let f = e.extend_fn_once_box(|()| {
 //!             println!("hello from the second scoped thread");
 //!             // We can even mutably borrow `x` here,
 //!             // because no other threads are using it.
