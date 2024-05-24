@@ -1,77 +1,25 @@
 //! # Scope lock
 //!
+//! Scope lock allows you to extend lifetime for certain kind of objects like closures to use them
+//! where larger lifetimes are required, like [`std::thread::spawn`]. Start from [`lock_scope`].
+//!
 //! ## Examples
+//!
+//! Using boxes (requires allocation)
+//!
+//! ```
+#![doc = include_str!("../examples/boxed.rs")]
+//! ```
 //!
 //! Using references
 //!
 //! ```
-//! use std::thread;
-//!
-//! let mut a = vec![1, 2, 3];
-//! let mut x = 0;
-//!
-//! let f1 = &|()| {
-//!     println!("hello from the first scoped thread");
-//!     // We can borrow `a` here.
-//!     dbg!(&a);
-//! };
-//! let f2 = &mut |()| {
-//!     println!("hello from the second scoped thread");
-//!     // We can even mutably borrow `x` here,
-//!     // because no other threads are using it.
-//!     x += a[0] + a[2];
-//! };
-//!
-//! scope_lock::lock_scope(|e| {
-//!     thread::spawn({
-//!         let f = e.extend_fn(f1);
-//!         move || f.call(())
-//!     });
-//!     thread::spawn({
-//!         let mut f = e.extend_fn_mut(f2);
-//!         move || f.call(())
-//!     });
-//!     println!("hello from the main thread");
-//! });
-//!
-//! // After the scope, we can modify and access our variables again:
-//! a.push(4);
-//! assert_eq!(x, a.len());
+#![doc = include_str!("../examples/references.rs")]
 //! ```
-//!
-//! Using boxes
-//!
-//! ```
-//! use std::thread;
-//!
-//! let mut a = vec![1, 2, 3];
-//! let mut x = 0;
-//!
-//! scope_lock::lock_scope(|e| {
-//!     thread::spawn({
-//!         let f = e.extend_fn_once_box(|()| {
-//!             println!("hello from the first scoped thread");
-//!             // We can borrow `a` here.
-//!             dbg!(&a);
-//!         });
-//!         move || f(())
-//!     });
-//!     thread::spawn({
-//!         let f = e.extend_fn_once_box(|()| {
-//!             println!("hello from the second scoped thread");
-//!             // We can even mutably borrow `x` here,
-//!             // because no other threads are using it.
-//!             x += a[0] + a[2];
-//!         });
-//!         move || f(())
-//!     });
-//!     println!("hello from the main thread");
-//! });
-//!
-//! // After the scope, we can modify and access our variables again:
-//! a.push(4);
-//! assert_eq!(x, a.len());
-//! ```
+// TODO: #![warn(missing_docs)]
+// TODO: trait UnwrapArgTuple
+// TODO: rename
+
 use std::{
     borrow::{Borrow, BorrowMut},
     marker::PhantomData,
@@ -105,7 +53,6 @@ pub struct Extender<'scope, 'env> {
     env: PhantomData<&'env mut &'env ()>,
 }
 
-// TODO: Add extend ref (mut)
 impl<'scope, 'env> Extender<'scope, 'env> {
     pub fn extend_fn<F, I, O>(&'scope self, f: &'scope F) -> ExtendedFn<I, O>
     where
@@ -304,6 +251,9 @@ where
     }
 }
 
+// TODO: split into separate crate
+// TODO: Pin support
+// TODO: Copy support
 pub struct RefOnce<'a, T: ?Sized> {
     slot: &'a mut Once<T>,
 }
@@ -383,3 +333,4 @@ impl<I, O> Drop for ExtendedFnOnce<I, O> {
 unsafe impl<I, O> Send for ExtendedFnOnce<I, O> {}
 
 // TODO: zero case test
+// TODO: tests from rust std::thread::scope
