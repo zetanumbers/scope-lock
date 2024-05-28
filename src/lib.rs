@@ -44,7 +44,11 @@ where
         scope: PhantomData,
         env: PhantomData,
     };
+    let guard = ReferenceGuard {
+        extender: &extender,
+    };
     scope(&extender);
+    drop(guard);
 }
 
 pub struct Extender<'scope, 'env> {
@@ -169,7 +173,6 @@ impl<'scope, 'env> Extender<'scope, 'env> {
     // TODO: Add futures
 }
 
-/// Waits for true on drop
 struct ReferenceCounter<'a> {
     counter: &'a RwLock<()>,
 }
@@ -186,10 +189,15 @@ impl<'a> ReferenceCounter<'a> {
     }
 }
 
-impl Drop for ReferenceCounter<'_> {
+/// Waits for true on drop
+struct ReferenceGuard<'scope, 'env> {
+    extender: &'scope Extender<'scope, 'env>,
+}
+
+impl Drop for ReferenceGuard<'_, '_> {
     fn drop(&mut self) {
         // faster to not unlock and just drop
-        mem::forget(self.counter.write());
+        mem::forget(self.extender.rc.counter.write());
     }
 }
 
