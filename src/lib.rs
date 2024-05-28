@@ -22,10 +22,12 @@
 
 use std::{
     borrow::{Borrow, BorrowMut},
+    future::Future,
     marker::PhantomData,
     mem,
     ops::{Deref, DerefMut},
-    ptr,
+    pin::Pin,
+    ptr, task,
 };
 
 use parking_lot::{RwLock, RwLockReadGuard};
@@ -170,7 +172,45 @@ impl<'scope, 'env> Extender<'scope, 'env> {
         }
     }
 
-    // TODO: Add futures
+    pub fn extend_future<F>(&'scope self, f: Pin<&'scope mut F>) -> ExtendedFuture<F::Output>
+    where
+        F: Future + Send + 'scope,
+        F::Output: Send + 'scope,
+    {
+        unsafe {
+            ExtendedFuture {
+                func: mem::transmute::<
+                    ptr::NonNull<dyn Future<Output = F::Output> + Send + '_>,
+                    ptr::NonNull<dyn Future<Output = F::Output> + Send + 'static>,
+                >(ptr::NonNull::from(f.get_unchecked_mut())),
+                _reference_guard: mem::transmute::<Reference<'_>, Reference<'static>>(
+                    self.rc.acquire(),
+                ),
+            }
+        }
+    }
+
+    /// Extend lifetime of a future. Use [`Box::into_pin`] to pin the future.
+    pub fn extend_future_box<F>(
+        &'scope self,
+        f: F,
+    ) -> Pin<Box<dyn Future<Output = F::Output> + Send>>
+    where
+        F: Future + Send + 'scope,
+        F::Output: Send + 'scope,
+    {
+        unsafe {
+            let reference_guard =
+                mem::transmute::<Reference<'_>, Reference<'static>>(self.rc.acquire());
+            Box::into_pin(mem::transmute::<
+                Box<dyn Future<Output = F::Output> + Send + 'scope>,
+                Box<dyn Future<Output = F::Output> + Send>,
+            >(Box::new(async move {
+                let _reference_guard = &reference_guard;
+                f.await
+            })))
+        }
+    }
 }
 
 struct ReferenceCounter<'a> {
@@ -204,7 +244,7 @@ impl Drop for ReferenceGuard<'_, '_> {
 // TODO: Erase argument and output somehow too
 
 pub struct ExtendedFn<I, O> {
-    // TODO: Could make a single dynamicly sized struct
+    // TODO: Could make a single dynamically sized struct
     func: ptr::NonNull<dyn Fn(I) -> O + Sync>,
     _reference_guard: Reference<'static>,
 }
@@ -218,9 +258,11 @@ impl<I, O> ExtendedFn<I, O> {
 // Almost just a simple reference, so it is Send and Sync
 unsafe impl<I, O> Send for ExtendedFn<I, O> {}
 unsafe impl<I, O> Sync for ExtendedFn<I, O> {}
+// FIXME: unsafe impl<I, O> Send for ExtendedFnMut<I, O> where I: Send, O: Send {}
+// FIXME: unsafe impl<I, O> Sync for ExtendedFnMut<I, O> where I: Send, O: Send {}
 
 pub struct ExtendedFnMut<I, O> {
-    // TODO: Could make a single dynamicly sized struct
+    // TODO: Could make a single dynamically sized struct
     func: ptr::NonNull<dyn FnMut(I) -> O + Send>,
     _reference_guard: Reference<'static>,
 }
@@ -232,11 +274,16 @@ impl<I, O> ExtendedFnMut<I, O> {
 }
 
 unsafe impl<I, O> Send for ExtendedFnMut<I, O> {}
+// FIXME: unsafe impl<I, O> Send for ExtendedFnMut<I, O> where I: Send, O: Send {}
 
 #[repr(transparent)]
 struct Once<T: ?Sized>(mem::ManuallyDrop<T>);
 
-// TODO: Fix clippy warning
+/// Object-safe FnOnce
+///
+/// # Safety
+///
+/// [`ObjectSafeFnOnce::call_once`] may be called at most once.
 unsafe trait ObjectSafeFnOnce<I> {
     type Output;
 
@@ -244,7 +291,7 @@ unsafe trait ObjectSafeFnOnce<I> {
     ///
     /// # Safety
     ///
-    /// Must be called at most once.
+    /// May be called at most once.
     unsafe fn call_once(&mut self, input: I) -> Self::Output;
 }
 
@@ -260,8 +307,7 @@ where
 }
 
 // TODO: split into separate crate
-// TODO: Pin support
-// TODO: Copy support
+// TODO: Pin support (into_pin)
 pub struct RefOnce<'a, T: ?Sized> {
     slot: &'a mut Once<T>,
 }
@@ -320,7 +366,7 @@ impl<T: ?Sized> Drop for RefOnce<'_, T> {
 }
 
 pub struct ExtendedFnOnce<I, O> {
-    // TODO: Could make a single dynamicly sized struct
+    // TODO: Could make a single dynamically sized struct
     func: ptr::NonNull<dyn ObjectSafeFnOnce<I, Output = O> + Send>,
     reference_guard: Reference<'static>,
 }
@@ -340,6 +386,23 @@ impl<I, O> Drop for ExtendedFnOnce<I, O> {
 }
 
 unsafe impl<I, O> Send for ExtendedFnOnce<I, O> {}
+// FIXME: unsafe impl<I, O> Send for ExtendedFnOnce<I, O> where I: Send, O: Send {}
+
+pub struct ExtendedFuture<O> {
+    // TODO: Could make a single dynamically sized struct
+    func: ptr::NonNull<dyn Future<Output = O> + Send>,
+    _reference_guard: Reference<'static>,
+}
+
+impl<O> Future for ExtendedFuture<O> {
+    type Output = O;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> task::Poll<Self::Output> {
+        unsafe { Pin::new_unchecked(self.get_unchecked_mut().func.as_mut()) }.poll(cx)
+    }
+}
+
+unsafe impl<O> Send for ExtendedFuture<O> where O: Send {}
 
 // TODO: zero case test
 // TODO: tests from rust std::thread::scope
