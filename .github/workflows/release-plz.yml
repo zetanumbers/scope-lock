@@ -19,8 +19,10 @@ jobs:
         with:
           fetch-depth: 0
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-      - run: cargo test
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      - run: cargo miri test
       - name: Run release-plz
         uses: MarcoIeni/release-plz-action@v0.5
         env:
