@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3](https://github.com/zetanumbers/scope-lock/compare/v0.2.2...v0.2.3) - 2024-05-28
+
+### Added
+- add futures support ([#2](https://github.com/zetanumbers/scope-lock/pull/2))
+
+### Fixed
+- wait for extended objects before invalidating reference to extender
+
 ## [0.2.2](https://github.com/zetanumbers/scope-lock/compare/v0.2.1...v0.2.2) - 2024-05-28
 
 ### Fixed
