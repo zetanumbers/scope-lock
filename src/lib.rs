@@ -30,6 +30,8 @@ use std::{
 
 use parking_lot::{RwLock, RwLockReadGuard};
 
+mod core;
+
 pub fn lock_scope<'env, F, T>(scope: F)
 where
     F: for<'scope> FnOnce(&'scope Extender<'scope, 'env>) -> T,
@@ -58,25 +60,6 @@ pub struct Extender<'scope, 'env> {
 }
 
 impl<'scope, 'env> Extender<'scope, 'env> {
-    pub fn extend_fn<F, I, O>(&'scope self, f: &'scope F) -> ExtendedFn<I, O>
-    where
-        F: Fn(I) -> O + Sync + 'scope,
-        I: Send + 'scope,
-        O: Send + 'scope,
-    {
-        unsafe {
-            ExtendedFn {
-                func: mem::transmute::<
-                    ptr::NonNull<dyn Fn(I) -> O + Sync + '_>,
-                    ptr::NonNull<dyn Fn(I) -> O + Sync + 'static>,
-                >(ptr::NonNull::from(f)),
-                _reference_guard: mem::transmute::<Reference<'_>, Reference<'static>>(
-                    self.rc.acquire(),
-                ),
-            }
-        }
-    }
-
     pub fn extend_fn_box<F, I, O>(&'scope self, f: F) -> Box<dyn Fn(I) -> O + Send + Sync>
     where
         F: Fn(I) -> O + Send + Sync + 'scope,
@@ -261,7 +244,7 @@ where
 
 // TODO: split into separate crate
 // TODO: Pin support
-// TODO: Copy support
+// TODO: [StableDeref](https://docs.rs/stable_deref_trait)
 pub struct RefOnce<'a, T: ?Sized> {
     slot: &'a mut Once<T>,
 }
