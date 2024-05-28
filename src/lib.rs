@@ -267,6 +267,7 @@ impl<'a, T> RefOnce<'a, T> {
     }
 
     pub fn into_inner(this: Self) -> T {
+        let mut this = mem::ManuallyDrop::new(this);
         unsafe { mem::ManuallyDrop::take(&mut this.slot.0) }
     }
 }
