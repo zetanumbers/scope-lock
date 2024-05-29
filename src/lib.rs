@@ -329,7 +329,8 @@ impl<'a, T> RefOnce<'a, T> {
 impl<T: ?Sized> RefOnce<'_, T> {
     // TODO: make public
     fn into_raw(this: Self) -> *mut Once<T> {
-        ptr::addr_of_mut!(*this.slot)
+        let this = mem::ManuallyDrop::new(this);
+        unsafe { ptr::addr_of!(this.slot).read() }
     }
 }
 
