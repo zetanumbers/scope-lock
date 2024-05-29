@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4](https://github.com/zetanumbers/scope-lock/compare/v0.2.3...v0.2.4) - 2024-05-29
+
+### Fixed
+- `Extender::extend_fn_once` use after free
+
 ## [0.2.3](https://github.com/zetanumbers/scope-lock/compare/v0.2.2...v0.2.3) - 2024-05-28
 
 ### Added
