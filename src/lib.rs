@@ -16,9 +16,15 @@
 //! ```
 #![doc = include_str!("../examples/references.rs")]
 //! ```
+#![warn(unsafe_op_in_unsafe_fn)]
+
 // TODO: #![warn(missing_docs)]
 // TODO: trait UnwrapArgTuple
 // TODO: rename
+// TODO: no_std support
+
+// TODO: gate under a feature
+extern crate alloc;
 
 use std::{
     borrow::{Borrow, BorrowMut},
@@ -31,6 +37,8 @@ use std::{
 };
 
 use parking_lot::{RwLock, RwLockReadGuard};
+
+pub mod pointer_like;
 
 pub fn lock_scope<'env, F, T>(scope: F)
 where
@@ -146,7 +154,7 @@ impl<'scope, 'env> Extender<'scope, 'env> {
                 func: mem::transmute::<
                     ptr::NonNull<dyn ObjectSafeFnOnce<I, Output = O> + Send + '_>,
                     ptr::NonNull<dyn ObjectSafeFnOnce<I, Output = O> + Send + 'static>,
-                >(ptr::NonNull::new_unchecked(RefOnce::into_raw(f))),
+                >(ptr::NonNull::new_unchecked(RefOnce::into_raw_once(f))),
                 reference_guard: mem::transmute::<Reference<'_>, Reference<'static>>(
                     self.rc.acquire(),
                 ),
@@ -302,12 +310,11 @@ where
     type Output = O;
 
     unsafe fn call_once(&mut self, input: I) -> Self::Output {
-        mem::ManuallyDrop::take(&mut self.0)(input)
+        unsafe { mem::ManuallyDrop::take(&mut self.0)(input) }
     }
 }
 
 // TODO: split into separate crate
-// TODO: Pin support (into_pin)
 pub struct RefOnce<'a, T: ?Sized> {
     slot: &'a mut Once<T>,
 }
@@ -326,9 +333,32 @@ impl<'a, T> RefOnce<'a, T> {
     }
 }
 
+impl<'a, T: ?Sized> RefOnce<'a, T> {
+    /// Essentially leaks object as a pointer until the original
+    /// [`RefOnce`] is restored via [`Self::from_raw`].
+    pub fn into_raw(this: Self) -> *mut T {
+        let this = mem::ManuallyDrop::new(this);
+        (unsafe { ptr::addr_of!(this.slot).read() } as *mut Once<T>) as *mut T
+    }
+
+    /// Convert pointer returned from [`Self::into_raw`] back into
+    /// [`RefOnce`].
+    ///
+    /// # Safety
+    ///
+    /// `ptr` must have been returned from [`Self::into_raw`]. New
+    /// lifetime argument `'a` of [`RefOnce`] should not outlive old
+    /// lifetime not to cause any undefined behaviour.
+    pub unsafe fn from_raw(ptr: *mut T) -> Self {
+        RefOnce {
+            slot: unsafe { &mut *(ptr as *mut Once<T>) },
+        }
+    }
+}
+
 impl<T: ?Sized> RefOnce<'_, T> {
     // TODO: make public
-    fn into_raw(this: Self) -> *mut Once<T> {
+    fn into_raw_once(this: Self) -> *mut Once<T> {
         let this = mem::ManuallyDrop::new(this);
         unsafe { ptr::addr_of!(this.slot).read() }
     }
