@@ -1,9 +1,7 @@
 name: Minimal supported version
 
 on:
-  push:
-    branches:
-      - main
+  push
 
 jobs:
   msrv-check:
