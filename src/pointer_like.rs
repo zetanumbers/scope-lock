@@ -105,11 +105,11 @@ unsafe impl<T> PointerLike for &T {
     type Pointee = T;
 
     fn into_ptr(self) -> *mut Self::Pointee {
-        (self as *const T).cast_mut()
+        self as *const T as *mut T
     }
 
     unsafe fn from_ptr(ptr: *mut Self::Pointee) -> Self {
-        unsafe { &*ptr.cast_const() }
+        unsafe { &*(ptr as *const T) }
     }
 }
 unsafe impl<T> PointerDeref for &T {}
@@ -155,11 +155,11 @@ unsafe impl<T> PointerLike for alloc::rc::Rc<T> {
     type Pointee = T;
 
     fn into_ptr(self) -> *mut Self::Pointee {
-        alloc::rc::Rc::into_raw(self).cast_mut()
+        alloc::rc::Rc::into_raw(self) as *mut T
     }
 
     unsafe fn from_ptr(ptr: *mut Self::Pointee) -> Self {
-        unsafe { alloc::rc::Rc::from_raw(ptr.cast_const()) }
+        unsafe { alloc::rc::Rc::from_raw(ptr as *const T) }
     }
 }
 unsafe impl<T> PointerDeref for alloc::rc::Rc<T> {}
@@ -168,11 +168,11 @@ unsafe impl<T> PointerLike for alloc::sync::Arc<T> {
     type Pointee = T;
 
     fn into_ptr(self) -> *mut Self::Pointee {
-        alloc::sync::Arc::into_raw(self).cast_mut()
+        alloc::sync::Arc::into_raw(self) as *mut T
     }
 
     unsafe fn from_ptr(ptr: *mut Self::Pointee) -> Self {
-        unsafe { alloc::sync::Arc::from_raw(ptr.cast_const()) }
+        unsafe { alloc::sync::Arc::from_raw(ptr as *const T) }
     }
 }
 unsafe impl<T> PointerDeref for alloc::sync::Arc<T> {}
