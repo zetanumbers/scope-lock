@@ -5,16 +5,16 @@
 //!
 //! ## Examples
 //!
-//! Using boxes (requires allocation)
+//! Using boxes (requires allocation):
 //!
 //! ```
 #![doc = include_str!("../examples/boxed.rs")]
 //! ```
 //!
-//! Using references
+//! Using [`RefOnce`]:
 //!
 //! ```
-#![doc = include_str!("../examples/references.rs")]
+#![doc = include_str!("../examples/ref_once.rs")]
 //! ```
 #![warn(
     unsafe_op_in_unsafe_fn,

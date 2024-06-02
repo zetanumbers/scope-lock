@@ -8,17 +8,40 @@ where
 }
 
 #[test]
-fn closure_async() {
+fn closure_async_boxed() {
     let a = 37;
     scope_lock::lock_scope(|e| {
         check_static_closure_async({
-            let f = e.extend_fn_once_box(|b| {
-                e.extend_future_box(async move {
+            e.fn_mut(Box::new(|b| {
+                e.future(Box::new(async move {
                     dbg!(&a);
                     dbg!(a + b);
-                })
-            });
-            move |b| f(b)
+                }))
+            }))
         });
     });
 }
+
+// TODO
+// #[test]
+// fn closure_async_ref() {
+//     let a = 37;
+//     let mut s0 = MaybeUninit::uninit();
+//     let mut s1 = MaybeUninit::uninit();
+//     scope_lock::lock_scope(|e| {
+//         check_static_closure_async({
+//             e.fn_mut(RefOnce::new(
+//                 |b| {
+//                     e.future(RefOnce::new(
+//                         async move {
+//                             dbg!(&a);
+//                             dbg!(a + b);
+//                         },
+//                         &mut s1,
+//                     ))
+//                 },
+//                 &mut s0,
+//             ))
+//         });
+//     });
+// }
