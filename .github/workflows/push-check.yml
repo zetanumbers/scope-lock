@@ -28,9 +28,9 @@ jobs:
         uses: dtolnay/rust-toolchain@nightly
         with:
           components: miri
-      - name: Stacked borrows
-        run: cargo miri test
       - name: Tree borrows
         run: cargo miri test
         env:
           MIRIFLAGS: -Zmiri-tree-borrows
+      - name: Stacked borrows
+        run: cargo miri test
