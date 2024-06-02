@@ -1,0 +1,32 @@
+name: Push check
+
+on:
+  push
+
+jobs:
+  msrv-check:
+    name: Minimal supported version check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.64
+      - run: cargo check --tests --examples
+
+  miri-test:
+    name: Miri test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      - name: Stacked borrows
+        run: cargo miri test
