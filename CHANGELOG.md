@@ -6,6 +6,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5](https://github.com/zetanumbers/scope-lock/compare/v0.2.4...v0.2.5) - 2024-06-02
+
+### Added
+- add new Extender methods which don't use dynamic dispatch
+- add unchecked versions of extend functions
+- pointer_like traits added
+
+### Fixed
+- drop reference guard after extended value is dropped
+
+### Other
+- remove old empty files
+- disable stacked borrows on tree borrows check
+- add test for a specific data race error on miri
+- remove unused pub(crate)
+- update parking_lot in Cargo.lock
+- swap order of tree borrows and stack borrows tests
+- set minimal supported rust version to 1.66
+- revert usage of ptr::cast_const and cast_mut
+- modularize code
+- run miri tests with tree borrows model too
+- move msrv and separate miri test into separate push workflow
+- run minimal version check on any push
+
 ## [0.2.4](https://github.com/zetanumbers/scope-lock/compare/v0.2.3...v0.2.4) - 2024-05-29
 
 ### Fixed
