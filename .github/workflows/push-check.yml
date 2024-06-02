@@ -30,3 +30,7 @@ jobs:
           components: miri
       - name: Stacked borrows
         run: cargo miri test
+      - name: Tree borrows
+        run: cargo miri test
+        env:
+          MIRIFLAGS: -Zmiri-tree-borrows
