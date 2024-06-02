@@ -6,11 +6,50 @@ use core::ptr;
 use core::task;
 
 use crate::extended::Reference;
-use crate::pointer_like::erased_static::{fn_drop, fn_poll_unforgotten, fn_poll_unpin};
-use crate::pointer_like::{PointerDerefMut, PointerPinUnforgotten};
+use crate::pointer_like::erased_static::{fn_drop, fn_poll_unforgotten};
+use crate::pointer_like::PointerPinUnforgotten;
 use crate::Extender;
 
 impl<'scope, 'env> Extender<'scope, 'env> {
+    pub fn future<'extended, P, O>(
+        &'scope self,
+        f: P,
+    ) -> impl Future<Output = O> + Send + Sync + 'extended
+    where
+        'extended: 'scope,
+        P: PointerPinUnforgotten + Send + 'scope,
+        P::Pointee: Future<Output = O>,
+        O: Send + 'extended,
+    {
+        let reference_guard =
+            unsafe { mem::transmute::<Reference<'_>, Reference<'static>>(self.rc.acquire()) };
+
+        struct Fut<T> {
+            inner: T,
+            _reference_guard: Reference<'static>,
+        }
+        unsafe impl<T> Send for Fut<T> {}
+        unsafe impl<T> Sync for Fut<T> {}
+        impl<T: Future> Future for Fut<T> {
+            type Output = T::Output;
+
+            fn poll(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> task::Poll<Self::Output> {
+                unsafe { Pin::new_unchecked(&mut self.get_unchecked_mut().inner).poll(cx) }
+            }
+        }
+
+        // It is sync since there's no way to interact with a reference to returned type
+        let f = Fut {
+            inner: unsafe { extend_future_unchecked(f) },
+            _reference_guard: reference_guard,
+        };
+        f
+    }
+
+    #[deprecated(
+        since = "0.2.5",
+        note = "`extend_future` is deprecated as it utilizes dynamic dispatch and works exclusivelly on pinned mutable references, use [`Extender::future`](#method.future) instead"
+    )]
     pub fn extend_future<F>(
         &'scope self,
         f: Pin<&'scope mut F>,
@@ -33,6 +72,10 @@ impl<'scope, 'env> Extender<'scope, 'env> {
     }
 
     /// Extend lifetime of a future.
+    #[deprecated(
+        since = "0.2.5",
+        note = "`extend_future_box` is deprecated as it utilizes dynamic dispatch and requires allocation, use [`Extender::future`](#method.future) instead"
+    )]
     pub fn extend_future_box<F>(
         &'scope self,
         f: F,
@@ -65,22 +108,6 @@ where
         ErasedFuture {
             ptr: ptr::NonNull::new_unchecked(f.into_ptr() as *mut ()),
             poll: fn_poll_unforgotten::<F, O>(),
-            drop: fn_drop::<F>(),
-            _marker: PhantomData,
-        }
-    }
-}
-
-pub unsafe fn extend_future_unpin_unchecked<'a, F, O>(f: F) -> impl Future<Output = O> + 'a
-where
-    F: PointerDerefMut,
-    F::Pointee: Future<Output = O> + Unpin,
-    O: 'a,
-{
-    unsafe {
-        ErasedFuture {
-            ptr: ptr::NonNull::new_unchecked(f.into_ptr() as *mut ()),
-            poll: fn_poll_unpin::<F, O>(),
             drop: fn_drop::<F>(),
             _marker: PhantomData,
         }

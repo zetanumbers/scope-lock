@@ -7,7 +7,94 @@ use crate::pointer_like::erased_static::{fn_call, fn_call_mut, fn_call_once, fn_
 use crate::pointer_like::{PointerDeref, PointerDerefMut, PointerIntoInner};
 use crate::{ref_once, Extender, RefOnce};
 
+use super::{UnsafeAssertSend, UnsafeAssertSync};
+
 impl<'scope, 'env> Extender<'scope, 'env> {
+    pub fn fn_once<'extended, P, I, O>(
+        &'scope self,
+        f: P,
+    ) -> impl FnOnce(I) -> O + Send + Sync + 'extended
+    where
+        'extended: 'scope,
+        P: PointerIntoInner + Send,
+        P::Pointee: FnOnce(I) -> O,
+        I: Send + 'extended,
+        O: Send + 'extended,
+    {
+        let reference_guard =
+            unsafe { mem::transmute::<Reference<'_>, Reference<'static>>(self.rc.acquire()) };
+        // It is sync since there's no way to interact with a reference to returned type
+        let f = UnsafeAssertSync(UnsafeAssertSend(unsafe { extend_fn_once_unchecked(f) }));
+        move |i| {
+            let f = f;
+            let out = f.0 .0(i);
+            drop(reference_guard);
+            out
+        }
+    }
+
+    pub fn fn_mut<'extended, P, I, O>(
+        &'scope self,
+        f: P,
+    ) -> impl FnMut(I) -> O + Send + Sync + 'extended
+    where
+        'extended: 'scope,
+        P: PointerDerefMut + Send,
+        P::Pointee: FnMut(I) -> O,
+        I: Send + 'extended,
+        O: Send + 'extended,
+    {
+        let mut reference_guard =
+            unsafe { mem::transmute::<Reference<'_>, Reference<'static>>(self.rc.acquire()) };
+        // It is sync since there's no way to interact with a reference to returned type
+        let mut f = UnsafeAssertSync(UnsafeAssertSend(unsafe { extend_fn_mut_unchecked(f) }));
+        move |i| {
+            let _reference_guard = &mut reference_guard;
+            let f = &mut f;
+            f.0 .0(i)
+        }
+    }
+
+    pub fn fn_<'extended, P, I, O>(&'scope self, f: P) -> impl Fn(I) -> O + Send + Sync + 'extended
+    where
+        'extended: 'scope,
+        P: PointerDeref + Send,
+        P::Pointee: Fn(I) -> O + Sync,
+        I: Send + 'extended,
+        O: Send + 'extended,
+    {
+        let reference_guard =
+            unsafe { mem::transmute::<Reference<'_>, Reference<'static>>(self.rc.acquire()) };
+        let f = UnsafeAssertSync(UnsafeAssertSend(unsafe { extend_fn_unchecked(f) }));
+        move |i| {
+            let _reference_guard = &reference_guard;
+            let f = &f;
+            f.0 .0(i)
+        }
+    }
+
+    pub fn fn_unsync<'extended, P, I, O>(&'scope self, f: P) -> impl Fn(I) -> O + Send + 'extended
+    where
+        'extended: 'scope,
+        P: PointerDeref + Send,
+        P::Pointee: Fn(I) -> O,
+        I: Send + 'extended,
+        O: Send + 'extended,
+    {
+        let reference_guard =
+            unsafe { mem::transmute::<Reference<'_>, Reference<'static>>(self.rc.acquire()) };
+        let f = UnsafeAssertSend(unsafe { extend_fn_unchecked(f) });
+        move |i| {
+            let _reference_guard = &reference_guard;
+            let f = &f;
+            f.0(i)
+        }
+    }
+
+    #[deprecated(
+        since = "0.2.5",
+        note = "`extend_fn` is deprecated as it utilizes dynamic dispatch and works exclusivelly with references, use [`Extender::fn_`](#method.fn_) instead"
+    )]
     pub fn extend_fn<F, I, O>(&'scope self, f: &'scope F) -> legacy::ExtendedFn<I, O>
     where
         F: Fn(I) -> O + Sync + 'scope,
@@ -27,6 +114,10 @@ impl<'scope, 'env> Extender<'scope, 'env> {
         }
     }
 
+    #[deprecated(
+        since = "0.2.5",
+        note = "`extend_fn_box` is deprecated as it utilizes dynamic dispatch and requires allocation, use [`Extender::fn_`](#method.fn_) instead"
+    )]
     pub fn extend_fn_box<F, I, O>(&'scope self, f: F) -> Box<dyn Fn(I) -> O + Send + Sync>
     where
         F: Fn(I) -> O + Send + Sync + 'scope,
@@ -46,6 +137,10 @@ impl<'scope, 'env> Extender<'scope, 'env> {
         }
     }
 
+    #[deprecated(
+        since = "0.2.5",
+        note = "`extend_fn_mut` is deprecated as it utilizes dynamic dispatch and works exclusivelly with mutable references, use [`Extender::fn_mut`](#method.fn_mut) instead"
+    )]
     pub fn extend_fn_mut<F, I, O>(&'scope self, f: &'scope mut F) -> legacy::ExtendedFnMut<I, O>
     where
         F: FnMut(I) -> O + Send + 'scope,
@@ -65,6 +160,10 @@ impl<'scope, 'env> Extender<'scope, 'env> {
         }
     }
 
+    #[deprecated(
+        since = "0.2.5",
+        note = "`extend_fn_mut_box` is deprecated as it utilizes dynamic dispatch and requires allocation, use [`Extender::fn_mut`](#method.fn_mut) instead"
+    )]
     pub fn extend_fn_mut_box<F, I, O>(&'scope self, mut f: F) -> Box<dyn FnMut(I) -> O + Send>
     where
         F: FnMut(I) -> O + Send + 'scope,
@@ -83,6 +182,10 @@ impl<'scope, 'env> Extender<'scope, 'env> {
         }
     }
 
+    #[deprecated(
+        since = "0.2.5",
+        note = "`extend_fn_once` is deprecated as it utilizes dynamic dispatch and works exclusivelly with `RefOnce`, use [`Extender::fn_once`](#method.fn_once) instead"
+    )]
     pub fn extend_fn_once<F, I, O>(
         &'scope self,
         f: RefOnce<'scope, F>,
@@ -105,6 +208,10 @@ impl<'scope, 'env> Extender<'scope, 'env> {
         }
     }
 
+    #[deprecated(
+        since = "0.2.5",
+        note = "`extend_fn_once_box` is deprecated as it utilizes dynamic dispatch and requires allocation, use [`Extender::fn_once`](#method.fn_once) instead"
+    )]
     pub fn extend_fn_once_box<F, I, O>(&'scope self, f: F) -> Box<dyn FnOnce(I) -> O + Send>
     where
         F: FnOnce(I) -> O + Send + 'scope,

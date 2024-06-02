@@ -53,22 +53,6 @@ where
     |erased_ptr, input| (unsafe { P::from_ptr(erased_ptr as *mut P::Pointee) }).into_inner()(input)
 }
 
-pub const unsafe fn fn_poll_unpin<P, O>(
-) -> impl Fn(*mut (), &mut task::Context<'_>) -> task::Poll<O>
-       + Copy
-       + Send
-       + Sync
-       + UnwindSafe
-       + RefUnwindSafe
-       + Unpin
-       + 'static
-where
-    P: PointerDerefMut,
-    P::Pointee: Future<Output = O> + Unpin,
-{
-    |erased_ptr, cx| unsafe { (Pin::new(&mut *(erased_ptr as *mut P::Pointee))).poll(cx) }
-}
-
 pub const unsafe fn fn_poll_unforgotten<P, O>(
 ) -> impl Fn(*mut (), &mut task::Context<'_>) -> task::Poll<O>
        + Copy

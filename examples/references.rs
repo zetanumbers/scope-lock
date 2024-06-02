@@ -18,12 +18,12 @@ fn main() {
 
     scope_lock::lock_scope(|e| {
         thread::spawn({
-            let f = e.extend_fn(f1);
-            move || f.call(())
+            let f = e.fn_(f1);
+            move || f(())
         });
         thread::spawn({
-            let mut f = e.extend_fn_mut(f2);
-            move || f.call(())
+            let mut f = e.fn_mut(f2);
+            move || f(())
         });
         println!("hello from the main thread");
     });

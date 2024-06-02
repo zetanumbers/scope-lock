@@ -56,3 +56,9 @@ impl Drop for ReferenceGuard<'_, '_> {
         mem::forget(self.extender.rc.counter.write());
     }
 }
+
+struct UnsafeAssertSync<T>(T);
+unsafe impl<T> Sync for UnsafeAssertSync<T> {}
+
+struct UnsafeAssertSend<T>(T);
+unsafe impl<T> Send for UnsafeAssertSend<T> {}
