@@ -35,7 +35,7 @@ where
 
 // TODO: split into separate crate
 pub struct RefOnce<'a, T: ?Sized> {
-    pub(crate) slot: &'a mut Once<T>,
+    slot: &'a mut Once<T>,
 }
 
 impl<'a, T> RefOnce<'a, T> {
