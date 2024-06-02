@@ -1,9 +1,9 @@
-use core::{
-    ops::{Deref, DerefMut},
-    pin::Pin,
-};
+use core::ops::{Deref, DerefMut};
+use core::pin::Pin;
 
 use crate::RefOnce;
+
+pub mod erased_static;
 
 /// Trait to convert various kinds of smart pointers and references into
 /// a single raw pointer. Allows to implement more generic API.
@@ -42,7 +42,8 @@ pub unsafe trait PointerLike {
     ///
     /// `ptr` must be one returned from [`Self::into_ptr`] unless
     /// explicitly allowed otherwise. Be careful raw pointer must not
-    /// outlive original smart pointer's lifetime.
+    /// outlive original smart pointer's lifetime. Do not call this
+    /// function twice on the same argument.
     unsafe fn from_ptr(ptr: *mut Self::Pointee) -> Self;
 }
 
