@@ -13,8 +13,6 @@ use core::{
 
 use super::{PointerDeref, PointerDerefMut, PointerIntoInner, PointerLike, PointerPinUnforgotten};
 
-mod fn_;
-
 /// Get `'static` function of drop on a `P` pointer type.
 ///
 /// # Safety
