@@ -10,7 +10,10 @@ use crate::pointer_like::erased_static::{fn_drop, fn_poll_unforgotten};
 use crate::pointer_like::PointerPinUnforgotten;
 use crate::Extender;
 
+use super::AssociateReference;
+
 impl<'scope, 'env> Extender<'scope, 'env> {
+    // TODO: pointer width extended value like extend_future_box
     pub fn future<'extended, P, O>(
         &'scope self,
         f: P,
@@ -26,6 +29,7 @@ impl<'scope, 'env> Extender<'scope, 'env> {
 
         struct Fut<T> {
             inner: T,
+            // drop last
             _reference_guard: Reference<'static>,
         }
         unsafe impl<T> Send for Fut<T> {}
@@ -85,14 +89,18 @@ impl<'scope, 'env> Extender<'scope, 'env> {
         F::Output: Send + 'scope,
     {
         unsafe {
-            let reference_guard =
-                mem::transmute::<Reference<'_>, Reference<'static>>(self.rc.acquire());
+            let mut f = AssociateReference {
+                _reference_guard: mem::transmute::<Reference<'_>, Reference<'static>>(
+                    self.rc.acquire(),
+                ),
+                inner: f,
+            };
             Box::into_pin(mem::transmute::<
                 Box<dyn Future<Output = F::Output> + Send + 'scope>,
                 Box<dyn Future<Output = F::Output> + Send>,
             >(Box::new(async move {
-                let _reference_guard = &reference_guard;
-                f.await
+                let f = &mut f;
+                Pin::new_unchecked(&mut f.inner).await
             })))
         }
     }

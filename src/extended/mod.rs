@@ -29,6 +29,12 @@ impl<'scope, 'env> Extender<'scope, 'env> {
     }
 }
 
+struct AssociateReference<T> {
+    inner: T,
+    // drop reference last
+    _reference_guard: Reference<'static>,
+}
+
 struct ReferenceCounter<'a> {
     counter: &'a RwLock<()>,
 }
