@@ -31,6 +31,6 @@ jobs:
       - name: Tree borrows
         run: cargo miri test
         env:
-          MIRIFLAGS: -Zmiri-tree-borrows
+          MIRIFLAGS: -Zmiri-tree-borrows -Zmiri-disable-stacked-borrows
       - name: Stacked borrows
         run: cargo miri test
