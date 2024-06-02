@@ -16,8 +16,11 @@
 //! ```
 #![doc = include_str!("../examples/references.rs")]
 //! ```
-#![warn(unsafe_op_in_unsafe_fn)]
-#![warn(clippy::std_instead_of_core, clippy::alloc_instead_of_core)]
+#![warn(
+    unsafe_op_in_unsafe_fn,
+    clippy::std_instead_of_core,
+    clippy::alloc_instead_of_core
+)]
 
 // TODO: #![warn(missing_docs)]
 // TODO: trait UnwrapArgTuple
@@ -33,8 +36,10 @@ mod extended;
 pub mod pointer_like;
 mod ref_once;
 
-pub use extended::func::{ExtendedFn, ExtendedFnMut, ExtendedFnOnce};
-pub use extended::future::ExtendedFuture;
+pub use extended::func::legacy::{ExtendedFn, ExtendedFnMut, ExtendedFnOnce};
+pub use extended::func::{extend_fn_mut_unchecked, extend_fn_once_unchecked, extend_fn_unchecked};
+pub use extended::future::extend_future_unchecked;
+pub use extended::future::legacy::ExtendedFuture;
 pub use extended::Extender;
 pub use ref_once::RefOnce;
 
