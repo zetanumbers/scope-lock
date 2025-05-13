@@ -17,7 +17,9 @@
           pkgs = import nixpkgs {
             inherit system overlays;
           };
-          rustToolchain = pkgs.pkgsBuildHost.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
+          rustToolchain = pkgs.pkgsBuildHost.rust-bin.selectLatestNightlyWith (toolchain: toolchain.default.override {
+            extensions = [ "rust-src" "rust-analyzer" "miri" ];
+          });
         in
         with pkgs;
         {
