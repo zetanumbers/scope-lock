@@ -36,22 +36,21 @@ mod extended;
 pub mod pointer_like;
 mod ref_once;
 
+pub use extended::Extender;
 pub use extended::func::legacy::{ExtendedFn, ExtendedFnMut, ExtendedFnOnce};
 pub use extended::func::{extend_fn_mut_unchecked, extend_fn_once_unchecked, extend_fn_unchecked};
 pub use extended::future::extend_future_unchecked;
 pub use extended::future::legacy::ExtendedFuture;
-pub use extended::Extender;
 pub use ref_once::RefOnce;
 
-pub fn lock_scope<'env, F, T>(scope: F)
+pub fn lock_scope<'env, F, T>(scope: F) -> T
 where
     F: for<'scope> FnOnce(&'scope Extender<'scope, 'env>) -> T,
 {
     let rw_lock = RwLock::new(());
     let extender = Extender::new(&rw_lock);
-    let guard = extender.guard();
-    scope(&extender);
-    drop(guard);
+    let _guard = extender.guard();
+    scope(&extender)
 }
 
 // TODO: zero case test
