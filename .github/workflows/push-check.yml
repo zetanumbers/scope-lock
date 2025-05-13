@@ -13,7 +13,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.66
+        uses: dtolnay/rust-toolchain@1.85
       - run: cargo check --tests --examples
 
   miri-test:
