@@ -5,10 +5,10 @@ use core::pin::Pin;
 use core::ptr;
 use core::task;
 
-use crate::extended::Reference;
-use crate::pointer_like::erased_static::{fn_drop, fn_poll_unforgotten};
-use crate::pointer_like::PointerPinUnforgotten;
 use crate::Extender;
+use crate::extended::Reference;
+use crate::pointer_like::PointerPinUnforgotten;
+use crate::pointer_like::erased_static::{fn_drop, fn_poll_unforgotten};
 
 use super::AssociateReference;
 
@@ -48,61 +48,6 @@ impl<'scope, 'env> Extender<'scope, 'env> {
             _reference_guard: reference_guard,
         };
         f
-    }
-
-    #[deprecated(
-        since = "0.2.5",
-        note = "`extend_future` is deprecated as it utilizes dynamic dispatch and works exclusivelly on pinned mutable references, use [`Extender::future`](#method.future) instead"
-    )]
-    pub fn extend_future<F>(
-        &'scope self,
-        f: Pin<&'scope mut F>,
-    ) -> legacy::ExtendedFuture<F::Output>
-    where
-        F: Future + Send + 'scope,
-        F::Output: Send + 'scope,
-    {
-        unsafe {
-            legacy::ExtendedFuture {
-                func: mem::transmute::<
-                    ptr::NonNull<dyn Future<Output = F::Output> + Send + '_>,
-                    ptr::NonNull<dyn Future<Output = F::Output> + Send + 'static>,
-                >(ptr::NonNull::from(f.get_unchecked_mut())),
-                _reference_guard: mem::transmute::<Reference<'_>, Reference<'static>>(
-                    self.rc.acquire(),
-                ),
-            }
-        }
-    }
-
-    /// Extend lifetime of a future.
-    #[deprecated(
-        since = "0.2.5",
-        note = "`extend_future_box` is deprecated as it utilizes dynamic dispatch and requires allocation, use [`Extender::future`](#method.future) instead"
-    )]
-    pub fn extend_future_box<F>(
-        &'scope self,
-        f: F,
-    ) -> Pin<Box<dyn Future<Output = F::Output> + Send>>
-    where
-        F: Future + Send + 'scope,
-        F::Output: Send + 'scope,
-    {
-        unsafe {
-            let mut f = AssociateReference {
-                _reference_guard: mem::transmute::<Reference<'_>, Reference<'static>>(
-                    self.rc.acquire(),
-                ),
-                inner: f,
-            };
-            Box::into_pin(mem::transmute::<
-                Box<dyn Future<Output = F::Output> + Send + 'scope>,
-                Box<dyn Future<Output = F::Output> + Send>,
-            >(Box::new(async move {
-                let f = &mut f;
-                Pin::new_unchecked(&mut f.inner).await
-            })))
-        }
     }
 }
 

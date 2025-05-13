@@ -75,14 +75,6 @@ impl<'a, T: ?Sized> RefOnce<'a, T> {
     }
 }
 
-impl<T: ?Sized> RefOnce<'_, T> {
-    // TODO: make public
-    pub(crate) fn into_raw_once(this: Self) -> *mut Once<T> {
-        let this = mem::ManuallyDrop::new(this);
-        unsafe { ptr::addr_of!(this.slot).read() }
-    }
-}
-
 impl<T: ?Sized> Deref for RefOnce<'_, T> {
     type Target = T;
 

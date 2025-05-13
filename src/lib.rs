@@ -37,7 +37,6 @@ pub mod pointer_like;
 mod ref_once;
 
 pub use extended::Extender;
-pub use extended::func::legacy::{ExtendedFn, ExtendedFnMut, ExtendedFnOnce};
 pub use extended::func::{extend_fn_mut_unchecked, extend_fn_once_unchecked, extend_fn_unchecked};
 pub use extended::future::extend_future_unchecked;
 pub use extended::future::legacy::ExtendedFuture;
