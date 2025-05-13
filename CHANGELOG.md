@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/zetanumbers/scope-lock/compare/v0.2.5...v0.3.0) - 2025-05-13
+
+### Fixed
+
+- [**breaking**] return lock_scope closure
+
+### Other
+
+- update github CI rust version
+- Add flake dev shell
+
 ## [0.2.5](https://github.com/zetanumbers/scope-lock/compare/v0.2.4...v0.2.5) - 2024-06-02
 
 ### Added
