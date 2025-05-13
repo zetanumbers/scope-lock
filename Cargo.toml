@@ -1,13 +1,13 @@
 [package]
 name = "scope-lock"
 version = "0.2.5"
-edition = "2021"
+edition = "2024"
 # TODO: elaborate
 description = "Safely extend lifetimes"
 # TODO: Apache 2.0
 license = "MIT"
 repository = "https://github.com/zetanumbers/scope-lock"
-rust-version = "1.66"
+rust-version = "1.85"
 
 [dependencies]
 parking_lot = { version = "0.12.2", features = ["send_guard"] }
