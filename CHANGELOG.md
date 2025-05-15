@@ -6,6 +6,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/zetanumbers/scope-lock/compare/v0.2.5...v0.3.0) - 2025-05-15
+
+### Added
+
+- [**breaking**] carry the return value of the `lock_scope` closure
+
+### Other
+
+- Separate MIRI setup stage
+- temporary disable MIRI preemptive scheduling
+- remove rust-toolchain.toml
+- [**breaking**] remove deprecated methods
+- disable tree borrows as parking_lot does not support strict provenance
+- fix miri CI
+- add flake dev shell and update rust version
+
 ## [0.2.5](https://github.com/zetanumbers/scope-lock/compare/v0.2.4...v0.2.5) - 2024-06-02
 
 ### Added
