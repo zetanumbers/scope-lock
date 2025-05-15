@@ -28,6 +28,7 @@ jobs:
         uses: dtolnay/rust-toolchain@nightly
         with:
           components: miri
+      - name: Setup MIRI
         run: cargo miri setup
       - name: Stacked borrows
         run: cargo miri test
