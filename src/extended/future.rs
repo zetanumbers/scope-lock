@@ -93,14 +93,11 @@ pub mod legacy {
     use core::ptr;
     use core::task;
 
-    use crate::extended::sync::Reference;
-
     #[doc(hidden)]
     #[deprecated = "leftover legacy code"]
     pub struct ExtendedFuture<O> {
         // TODO: Could make a single dynamically sized struct
         pub(crate) func: ptr::NonNull<dyn Future<Output = O> + Send>,
-        pub(crate) _reference_guard: Reference,
     }
 
     #[doc(hidden)]
