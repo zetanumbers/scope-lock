@@ -6,33 +6,6 @@ use core::ptr;
 #[repr(transparent)]
 pub(crate) struct Once<T: ?Sized>(mem::ManuallyDrop<T>);
 
-/// Object-safe FnOnce
-///
-/// # Safety
-///
-/// [`ObjectSafeFnOnce::call_once`] may be called at most once.
-pub(crate) unsafe trait ObjectSafeFnOnce<I> {
-    type Output;
-
-    /// Call closure
-    ///
-    /// # Safety
-    ///
-    /// May be called at most once.
-    unsafe fn call_once(&mut self, input: I) -> Self::Output;
-}
-
-unsafe impl<F, I, O> ObjectSafeFnOnce<I> for Once<F>
-where
-    F: FnOnce(I) -> O,
-{
-    type Output = O;
-
-    unsafe fn call_once(&mut self, input: I) -> Self::Output {
-        unsafe { mem::ManuallyDrop::take(&mut self.0)(input) }
-    }
-}
-
 // TODO: split into separate crate
 pub struct RefOnce<'a, T: ?Sized> {
     slot: &'a mut Once<T>,

@@ -8,6 +8,3 @@ description = "Safely extend lifetimes"
 license = "MIT"
 repository = "https://github.com/zetanumbers/scope-lock"
 rust-version = "1.85"
-
-[dependencies]
-parking_lot = { version = "0.12.2", features = ["send_guard"] }

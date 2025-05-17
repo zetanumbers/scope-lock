@@ -30,8 +30,6 @@
 // TODO: gate under a feature
 extern crate alloc;
 
-use parking_lot::RwLock;
-
 mod extended;
 pub mod pointer_like;
 mod ref_once;
@@ -46,7 +44,7 @@ pub fn lock_scope<'env, F, T>(scope: F) -> T
 where
     F: for<'scope> FnOnce(&'scope Extender<'scope, 'env>) -> T,
 {
-    let rw_lock = RwLock::new(());
+    let rw_lock = extended::sync::ReferenceCounter::new();
     let extender = Extender::new(&rw_lock);
     let _guard = extender.guard();
     scope(&extender)

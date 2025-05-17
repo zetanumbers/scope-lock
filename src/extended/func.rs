@@ -3,11 +3,9 @@ use core::mem;
 use core::ptr;
 
 use crate::Extender;
-use crate::extended::Reference;
 use crate::pointer_like::erased_static::{fn_call, fn_call_mut, fn_call_once, fn_drop};
 use crate::pointer_like::{PointerDeref, PointerDerefMut, PointerIntoInner};
 
-use super::AssociateReference;
 use super::{UnsafeAssertSend, UnsafeAssertSync};
 
 impl<'scope, 'env> Extender<'scope, 'env> {
@@ -22,12 +20,10 @@ impl<'scope, 'env> Extender<'scope, 'env> {
         I: Send + 'extended,
         O: Send + 'extended,
     {
-        let f = AssociateReference {
-            _reference_guard: unsafe {
-                mem::transmute::<Reference<'_>, Reference<'static>>(self.rc.acquire())
-            },
-            // Sync since there's no way to interact with a reference to returned type
-            inner: UnsafeAssertSync(UnsafeAssertSend(unsafe { extend_fn_once_unchecked(f) })),
+        let f = unsafe {
+            self.associate_reference(UnsafeAssertSync(UnsafeAssertSend(
+                extend_fn_once_unchecked(f),
+            )))
         };
         move |i| {
             let f = f;
@@ -46,12 +42,10 @@ impl<'scope, 'env> Extender<'scope, 'env> {
         I: Send + 'extended,
         O: Send + 'extended,
     {
-        let mut f = AssociateReference {
-            _reference_guard: unsafe {
-                mem::transmute::<Reference<'_>, Reference<'static>>(self.rc.acquire())
-            },
-            // Sync since there's no way to interact with a reference to returned type
-            inner: UnsafeAssertSync(UnsafeAssertSend(unsafe { extend_fn_mut_unchecked(f) })),
+        let mut f = unsafe {
+            self.associate_reference(UnsafeAssertSync(UnsafeAssertSend(extend_fn_mut_unchecked(
+                f,
+            ))))
         };
         move |i| {
             let f = &mut f;
@@ -67,11 +61,8 @@ impl<'scope, 'env> Extender<'scope, 'env> {
         I: Send + 'extended,
         O: Send + 'extended,
     {
-        let f = AssociateReference {
-            _reference_guard: unsafe {
-                mem::transmute::<Reference<'_>, Reference<'static>>(self.rc.acquire())
-            },
-            inner: UnsafeAssertSync(UnsafeAssertSend(unsafe { extend_fn_unchecked(f) })),
+        let f = unsafe {
+            self.associate_reference(UnsafeAssertSync(UnsafeAssertSend(extend_fn_unchecked(f))))
         };
         move |i| {
             let f = &f;
@@ -87,12 +78,7 @@ impl<'scope, 'env> Extender<'scope, 'env> {
         I: Send + 'extended,
         O: Send + 'extended,
     {
-        let f = AssociateReference {
-            _reference_guard: unsafe {
-                mem::transmute::<Reference<'_>, Reference<'static>>(self.rc.acquire())
-            },
-            inner: UnsafeAssertSend(unsafe { extend_fn_unchecked(f) }),
-        };
+        let f = unsafe { self.associate_reference(UnsafeAssertSend(extend_fn_unchecked(f))) };
         move |i| {
             let f = &f;
             f.inner.0(i)

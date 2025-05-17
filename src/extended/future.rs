@@ -1,16 +1,13 @@
 use core::future::Future;
 use core::marker::PhantomData;
-use core::mem;
 use core::pin::Pin;
 use core::ptr;
 use core::task;
 
 use crate::Extender;
-use crate::extended::Reference;
+use crate::extended::sync::Reference;
 use crate::pointer_like::PointerPinUnforgotten;
 use crate::pointer_like::erased_static::{fn_drop, fn_poll_unforgotten};
-
-use super::AssociateReference;
 
 impl<'scope, 'env> Extender<'scope, 'env> {
     // TODO: pointer width extended value like extend_future_box
@@ -24,13 +21,12 @@ impl<'scope, 'env> Extender<'scope, 'env> {
         P::Pointee: Future<Output = O>,
         O: Send + 'extended,
     {
-        let reference_guard =
-            unsafe { mem::transmute::<Reference<'_>, Reference<'static>>(self.rc.acquire()) };
+        let reference_guard = unsafe { self.rc.acquire() };
 
         struct Fut<T> {
             inner: T,
             // drop last
-            _reference_guard: Reference<'static>,
+            _reference_guard: Reference,
         }
         unsafe impl<T> Send for Fut<T> {}
         unsafe impl<T> Sync for Fut<T> {}
@@ -43,11 +39,10 @@ impl<'scope, 'env> Extender<'scope, 'env> {
         }
 
         // It is sync since there's no way to interact with a reference to returned type
-        let f = Fut {
+        Fut {
             inner: unsafe { extend_future_unchecked(f) },
             _reference_guard: reference_guard,
-        };
-        f
+        }
     }
 }
 
@@ -97,12 +92,12 @@ pub mod legacy {
     use core::ptr;
     use core::task;
 
-    use crate::extended::Reference;
+    use crate::extended::sync::Reference;
 
     pub struct ExtendedFuture<O> {
         // TODO: Could make a single dynamically sized struct
         pub(crate) func: ptr::NonNull<dyn Future<Output = O> + Send>,
-        pub(crate) _reference_guard: Reference<'static>,
+        pub(crate) _reference_guard: Reference,
     }
 
     impl<O> Future for ExtendedFuture<O> {
