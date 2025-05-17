@@ -86,6 +86,7 @@ impl<P, O, D: Fn(*mut ())> Drop for ErasedFuture<P, O, D> {
     }
 }
 
+#[allow(deprecated)]
 pub mod legacy {
     use core::future::Future;
     use core::pin::Pin;
@@ -94,12 +95,15 @@ pub mod legacy {
 
     use crate::extended::sync::Reference;
 
+    #[doc(hidden)]
+    #[deprecated = "leftover legacy code"]
     pub struct ExtendedFuture<O> {
         // TODO: Could make a single dynamically sized struct
         pub(crate) func: ptr::NonNull<dyn Future<Output = O> + Send>,
         pub(crate) _reference_guard: Reference,
     }
 
+    #[doc(hidden)]
     impl<O> Future for ExtendedFuture<O> {
         type Output = O;
 
@@ -108,5 +112,6 @@ pub mod legacy {
         }
     }
 
+    #[doc(hidden)]
     unsafe impl<O> Send for ExtendedFuture<O> where O: Send {}
 }
