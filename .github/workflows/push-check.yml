@@ -33,4 +33,8 @@ jobs:
       - name: Stacked borrows
         run: cargo miri test
         env:
-          MIRIFLAGS: -Zmiri-fixed-schedule
+          MIRIFLAGS: -Zmiri-many-seeds=0..8
+      - name: Tree borrows
+        run: cargo miri test
+        env:
+          MIRIFLAGS: -Zmiri-many-seeds=0..8 -Zmiri-tree-borrows
