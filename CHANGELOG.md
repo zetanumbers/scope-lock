@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/zetanumbers/scope-lock/compare/v0.3.0...v0.4.0) - 2025-05-17
+
+### Fixed
+
+- reimplement extended reference tracking using std
+
+### Other
+
+- restore Unpin impls in leftover legacy code
+- relax MIRI restrictions, add tree borrows and run 8 random seeds
+- deprecate and hide docs on leftover legacy code
+
 ## [0.3.0](https://github.com/zetanumbers/scope-lock/compare/v0.2.5...v0.3.0) - 2025-05-15
 
 ### Added
