@@ -92,6 +92,7 @@ pub mod legacy {
     use core::ptr;
     use core::task;
 
+    #[doc(hidden)]
     pub struct ExtendedFuture<O> {
         // TODO: Could make a single dynamically sized struct
         pub(crate) func: ptr::NonNull<dyn Future<Output = O> + Send>,
